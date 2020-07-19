@@ -1,30 +1,34 @@
-
-# Import Splinter and BeautifulSoup
+# Import Splinter, BeautifulSoup, and Pandas
 from splinter import Browser
-from bs4 import BeautifulSoup as soup
+from bs4 import BeautifulSoup 
 import pandas as pd
 import datetime as dt
 
+
 def scrape_all():
-       # Initiate headless driver for deployment
-   browser = Browser("chrome", executable_path="chromedriver", headless=True)
+    # Initiate headless driver for deployment
+    browser = Browser("chrome", executable_path="chromedriver", headless=True)
 
-# Run all scraping functions and store results in dictionary
-data = {
-      "news_title": news_title,
-      "news_paragraph": news_paragraph,
-      "featured_image": featured_image(browser),
-      "facts": mars_facts(),
-      "last_modified": dt.datetime.now()
-}
+    news_title, news_paragraph = mars_news(browser)
+    hemisphere_image_urls=hemisphere(browser)
 
+    # Run all scraping functions and store results in a dictionary
+    data = {
+        "news_title": news_title,
+        "news_paragraph": news_paragraph,
+        "featured_image": featured_image(browser),
+        "facts": mars_facts(),
+        "last_modified": dt.datetime.now(),
+        "hemisphere": hemisphere_image_urls
+    }
 
-# Set the executable path and initialize the chrome browser in splinter
-executable_path = {'executable_path': '/usr/local/bin/chromedriver'}
-browser = Browser('chrome', **executable_path)
+    # Stop webdriver and return data
+    
+    return data
+
 
 def mars_news(browser):
-    
+
     # Scrape Mars News
     # Visit the mars nasa news site
     url = 'https://mars.nasa.gov/news/'
@@ -35,7 +39,7 @@ def mars_news(browser):
 
     # Convert the browser html to a soup object and then quit the browser
     html = browser.html
-    news_soup = soup(html, 'html.parser')
+    news_soup = BeautifulSoup(html, 'html.parser')
 
     # Add try/except for error handling
     try:
@@ -51,38 +55,36 @@ def mars_news(browser):
     return news_title, news_p
 
 
-# ### Featured Images
 def featured_image(browser):
-# Visit URL
+    # Visit URL
     url = 'https://www.jpl.nasa.gov/spaceimages/?search=&category=Mars'
     browser.visit(url)
 
-# Find and click the full image button
-    full_image_elem = browser.find_by_id('full_image')
+    # Find and click the full image button
+    full_image_elem = browser.find_by_id('full_image')[0]
     full_image_elem.click()
 
-# Find the more info button and click that
+    # Find the more info button and click that
     browser.is_element_present_by_text('more info', wait_time=1)
     more_info_elem = browser.links.find_by_partial_text('more info')
     more_info_elem.click()
 
-# Parse the resulting html with soup
+    # Parse the resulting html with soup
     html = browser.html
-    img_soup = soup(html, 'html.parser')
+    img_soup = BeautifulSoup(html, 'html.parser')
 
+    # Add try/except for error handling
     try:
-    # Find the relative image url
+        # Find the relative image url
         img_url_rel = img_soup.select_one('figure.lede a img').get("src")
+
     except AttributeError:
         return None
 
-# Use the base URL to create an absolute URL
+    # Use the base url to create an absolute url
     img_url = f'https://www.jpl.nasa.gov{img_url_rel}'
 
     return img_url
-
-
-browser.quit()
 
 def mars_facts():
     # Add try/except for error handling
@@ -96,13 +98,57 @@ def mars_facts():
     # Assign columns and set index of dataframe
     df.columns=['Description', 'Mars']
     df.set_index('Description', inplace=True)
+
     # Convert dataframe into HTML format, add bootstrap
     return df.to_html(classes="table table-striped")
 
+def hemisphere(browser):
+   
+    # Visit the USGS Astrogeology Science Center Site
+    url = "https://astrogeology.usgs.gov/search/results?q=hemisphere+enhanced&k1=target&v1=Mars"
+    browser.visit(url)
+    # Create an empty list with links for the hemispheres
+    hemisphere_image_urls = []
+
+    # Get a List of All the Hemisphere
+    links = browser.find_by_css("a.product-item h3")
+    for item in range(len(links)):
+        hemisphere = {}  
+        
+        # Find Element on Each Loop to Avoid a Stale Element Exception
+        browser.find_by_css("a.product-item h3")[item].click()
+        
+        # Find Sample Image Anchor Tag & Extract <href>
+        sample_element = browser.find_link_by_text("Sample").first
+        hemisphere["img_url"] = sample_element["href"]
+        
+        # Get Hemisphere Title
+        hemisphere["title"] = browser.find_by_css("h2.title").text
+            
+        # Append Hemisphere Object to List
+        hemisphere_image_urls.append(hemisphere)
+        
+        # Navigate Backwards
+        browser.back()
+    return hemisphere_image_urls
+
+    # Helper Function
+def scrape_hemisphere(html_text):
+        hemis_soup = BeautifulSoup(html_text, 'html.parser')
+        try:
+            title_element = hemis_soup.find("h2", class_ ="title").get_text()
+            sample_element = hemis_soup.find("a", text="Sample").get("href")
+        except AttributeError:
+            title_element = None
+            sample_element = None 
+        hemisphere = {
+            "title": title_element,
+            "img_url": sample_element
+        }
+        return hemisphere
+
+
 if __name__ == "__main__":
-    
+
     # If running as script, print scraped data
-    print(scrape_all()) 
-
-
-
+    print(scrape_all())
